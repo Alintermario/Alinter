@@ -5,6 +5,162 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ventas por Cliente — Live</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js">
+
+// ── COB RESTO ──────────────────────────────────────────────────────────────
+let cobRestoData = [];
+let cobRestoCliente = 'Auchan';
+let cobRestoChartInst = null;
+
+async function loadCobResto() {
+  const st = document.getElementById('cobRestoStatus');
+  if (st) st.textContent = 'Cargando…';
+  try {
+    const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSn_wzF5MM4kALfCdR_tjFlzDHrF03RqNJYNmG230LVPAy9-JrtN_Sj8dSrZmiKAd1_3rR93Gl_TC6I/pub?gid=822258397&single=true&output=csv&t=" + Date.now();
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+
+    function pl(line) {
+      const cols=[]; let cur='',inQ=false;
+      for(const ch of line){if(ch==='"')inQ=!inQ;else if(ch===','&&!inQ){cols.push(cur.trim());cur='';}else cur+=ch;}
+      cols.push(cur.trim());
+      return cols.map(v=>v.replace(/^"|"$/g,'').trim());
+    }
+
+    const rows = text.split('\n').map(pl);
+    cobRestoData = [];
+    let section = null;
+    let eciDone = false;
+
+    rows.forEach(cols => {
+      const c0=cols[0]||'', c1=cols[1]||'', c2=cols[2]||'',
+            c3=cols[3]||'', c4=cols[4]||'', c5=cols[5]||'', c6=cols[6]||'';
+
+      // ── Header detection ──────────────────────────────────────────
+      if (/^código$/i.test(c0) && /^descripci/i.test(c1) && /^stock actual\s*-?$/i.test(c2) && /^prevision mes marzo$/i.test(c3)) {
+        section = 'auchan'; return;
+      }
+      if (/^code$/i.test(c0) && /^description$/i.test(c1)) {
+        section = 'lidl'; return;
+      }
+      if (/^código$/i.test(c0) && /^descripci/i.test(c1) && /hasta el/i.test(c2)) {
+        if (!eciDone) { section = 'eci'; eciDone = true; } else { section = 'aro'; } return;
+      }
+      if (/^producto$/i.test(c0) && /^descripci/i.test(c1)) {
+        section = 'itsu'; return;
+      }
+      if (/^código$/i.test(c0) && /^descripci/i.test(c1) && /^previs marzo$/i.test(c3)) {
+        section = 'kania'; return;
+      }
+      if (/^(código|producto|code)$/i.test(c0) && /^(descripci|description)/i.test(c1)) return;
+
+      if (!section) return;
+      if (!c0 && !c1) return;
+
+      let codigo, desc, stock, previs, dias, cliente;
+
+      if (section === 'auchan') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = 'Auchan';
+      } else if (section === 'lidl') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{6,7}$/.test(codigo)) return;
+        desc = c1; stock = parseFloat(c4)||0; previs = parseFloat(c2)||0;
+        dias = (parseFloat(c6)||0) * 7;
+        cliente = 'Lidl';
+      } else if (section === 'eci' || section === 'aro') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = section === 'eci' ? 'ECI' : 'ARO';
+      } else if (section === 'itsu') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = 'ITSU';
+      } else if (section === 'kania') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = 'Kania';
+      }
+
+      if (!cliente) return;
+      const familia = /crema|calabaza|calabacin/i.test(desc) ? 'CREMAS' : 'CALDOS';
+      cobRestoData.push({ cliente, familia, codigo, desc, stock:stock||0, prevision:previs||0, dias:parseFloat((dias||0).toFixed(1)) });
+    });
+
+    if(st) st.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) + ' · ' + cobRestoData.length + ' refs';
+    console.log('CobResto:', cobRestoData.length);
+    cobRestoData.forEach(d=>console.log(d.cliente,'|',d.desc,'|',d.dias+'d'));
+    renderCobResto();
+  } catch(err) {
+    if(st) st.textContent = '⚠️ Error: ' + err.message;
+    console.error('CobResto error:', err);
+  }
+}
+
+function setCobResto(cli, btn) {
+  cobRestoCliente = cli;
+  document.querySelectorAll('.cob-cli-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCobResto();
+}
+
+function renderCobResto() {
+  const data = cobRestoData.filter(d=>d.cliente===cobRestoCliente);
+  const tbody = document.getElementById('cobRestoTable');
+  const chartEl = document.getElementById('cobRestoChart');
+  if (!tbody||!chartEl) return;
+
+  function cc(d){return d<=0?'#9b1c1c':d<10?'#f74f4f':d<20?'#f7924f':'#4fc97f';}
+  function cl(d){return d<=0?'🚨 Sin stock':d<10?'⚠️ Crítico':d<20?'⚡ Atención':'✅ OK';}
+  function cb(d){return d<=0?'rgba(155,28,28,0.1)':d<10?'rgba(247,79,79,0.1)':d<20?'rgba(247,146,79,0.1)':'rgba(79,201,127,0.1)';}
+
+  if (data.length===0) {
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">Sin datos · '+cobRestoCliente+'</td></tr>';
+    if(cobRestoChartInst){cobRestoChartInst.destroy();cobRestoChartInst=null;}
+    return;
+  }
+
+  tbody.innerHTML='';
+  data.forEach(d=>{
+    const color=cc(d.dias),bg=cb(d.dias),label=cl(d.dias);
+    tbody.innerHTML+=`<tr style="background:${bg}">
+      <td style="color:var(--muted);font-size:0.75rem">${d.codigo}</td>
+      <td>${d.desc}</td>
+      <td style="text-align:right;color:var(--accent)">${d.stock.toLocaleString('es-ES')}</td>
+      <td style="text-align:right;color:var(--muted)">${d.prevision.toLocaleString('es-ES')}</td>
+      <td style="text-align:center"><span style="font-weight:700;color:${color}">${d.dias.toFixed(1)}d</span></td>
+      <td style="text-align:center"><span style="font-size:0.72rem;padding:0.15rem 0.5rem;border-radius:10px;background:${bg};color:${color};font-weight:600;border:1px solid ${color}40">${label}</span></td>
+    </tr>`;
+  });
+
+  if(cobRestoChartInst) cobRestoChartInst.destroy();
+  const colors=data.map(d=>cc(d.dias));
+  cobRestoChartInst=new Chart(chartEl,{
+    type:'bar',
+    data:{
+      labels:data.map(d=>d.desc.length>30?d.desc.substring(0,30)+'…':d.desc),
+      datasets:[{data:data.map(d=>d.dias),backgroundColor:colors.map(x=>x+'99'),borderColor:colors,borderWidth:2,borderRadius:6}]
+    },
+    options:{
+      indexAxis:'y',responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toFixed(1)} días`}}},
+      scales:{
+        x:{grid:{color:'#2a3147'},ticks:{color:'#7a849e'},title:{display:true,text:'Días de cobertura',color:'#7a849e'}},
+        y:{grid:{display:false},ticks:{color:'#c8d0e7',font:{size:11}}}
+      }
+    }
+  });
+}
+
 </script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -153,6 +309,10 @@
 
 
 
+
+  .cob-cli-btn { font-family:"DM Sans",sans-serif;font-size:0.78rem;font-weight:600;background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:0.35rem 1rem;border-radius:20px;cursor:pointer;transition:all 0.15s; }
+  .cob-cli-btn.active { background:var(--accent);border-color:var(--accent);color:#fff; }
+  .cob-cli-btn:hover:not(.active) { border-color:var(--accent);color:var(--accent); }
 </style>
 </head>
 <body>
@@ -161,6 +321,7 @@
 <div id="tabNav" style="background:var(--surface2);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;gap:0;position:sticky;top:0;z-index:100">
   <button class="tab-btn active" id="tab-ventas" onclick="switchTab('ventas')">📊 Ventas</button>
   <button class="tab-btn" id="tab-capacidad" onclick="switchTab('capacidad')">⚙️ Análisis Capacidad</button>
+  <button class="tab-btn" id="tab-cobresto" onclick="switchTab('cobresto')">🏪 Cob. Clientes</button>
 </div>
 
 <div id="loadingScreen">
@@ -855,10 +1016,13 @@ function togglePanel(btn) {
 function switchTab(tab) {
   document.getElementById('ventasTab').style.display    = tab==='ventas'    ? 'block':'none';
   document.getElementById('capacidadTab').style.display = tab==='capacidad' ? 'block':'none';
+  document.getElementById('cobrestoTab').style.display  = tab==='cobresto'  ? 'block':'none';
   document.getElementById('tab-ventas').classList.toggle('active',    tab==='ventas');
   document.getElementById('tab-capacidad').classList.toggle('active', tab==='capacidad');
+  document.getElementById('tab-cobresto').classList.toggle('active',  tab==='cobresto');
   if (tab==='ventas')    initVentasDrag();
   if (tab==='capacidad') { initCapacidadCharts(); initDragDrop(); }
+  if (tab==='cobresto')  { if(cobRestoData.length===0) loadCobResto(); else renderCobResto(); }
 }
 
 // ── CAPACIDAD DATA ─────────────────────────────────────────────────────────────
@@ -1291,7 +1455,200 @@ document.addEventListener('click', function(e) {
 });
 
 
+
+// ── COB RESTO ──────────────────────────────────────────────────────────────
+let cobRestoData = [];
+let cobRestoCliente = 'Auchan';
+let cobRestoChartInst = null;
+
+async function loadCobResto() {
+  const st = document.getElementById('cobRestoStatus');
+  if (st) st.textContent = 'Cargando…';
+  try {
+    const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSn_wzF5MM4kALfCdR_tjFlzDHrF03RqNJYNmG230LVPAy9-JrtN_Sj8dSrZmiKAd1_3rR93Gl_TC6I/pub?gid=822258397&single=true&output=csv&t=" + Date.now();
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+
+    function pl(line) {
+      const cols=[]; let cur='',inQ=false;
+      for(const ch of line){if(ch==='"')inQ=!inQ;else if(ch===','&&!inQ){cols.push(cur.trim());cur='';}else cur+=ch;}
+      cols.push(cur.trim());
+      return cols.map(v=>v.replace(/^"|"$/g,'').trim());
+    }
+
+    const rows = text.split('\n').map(pl);
+    cobRestoData = [];
+    let section = null;
+    let eciDone = false;
+
+    rows.forEach(cols => {
+      const c0=cols[0]||'', c1=cols[1]||'', c2=cols[2]||'',
+            c3=cols[3]||'', c4=cols[4]||'', c5=cols[5]||'', c6=cols[6]||'';
+
+      // ── Header detection ──────────────────────────────────────────
+      if (/^código$/i.test(c0) && /^descripci/i.test(c1) && /^stock actual\s*-?$/i.test(c2) && /^prevision mes marzo$/i.test(c3)) {
+        section = 'auchan'; return;
+      }
+      if (/^code$/i.test(c0) && /^description$/i.test(c1)) {
+        section = 'lidl'; return;
+      }
+      if (/^código$/i.test(c0) && /^descripci/i.test(c1) && /hasta el/i.test(c2)) {
+        if (!eciDone) { section = 'eci'; eciDone = true; } else { section = 'aro'; } return;
+      }
+      if (/^producto$/i.test(c0) && /^descripci/i.test(c1)) {
+        section = 'itsu'; return;
+      }
+      if (/^código$/i.test(c0) && /^descripci/i.test(c1) && /^previs marzo$/i.test(c3)) {
+        section = 'kania'; return;
+      }
+      if (/^(código|producto|code)$/i.test(c0) && /^(descripci|description)/i.test(c1)) return;
+
+      if (!section) return;
+      if (!c0 && !c1) return;
+
+      let codigo, desc, stock, previs, dias, cliente;
+
+      if (section === 'auchan') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = 'Auchan';
+      } else if (section === 'lidl') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{6,7}$/.test(codigo)) return;
+        desc = c1; stock = parseFloat(c4)||0; previs = parseFloat(c2)||0;
+        dias = (parseFloat(c6)||0) * 7;
+        cliente = 'Lidl';
+      } else if (section === 'eci' || section === 'aro') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = section === 'eci' ? 'ECI' : 'ARO';
+      } else if (section === 'itsu') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = 'ITSU';
+      } else if (section === 'kania') {
+        codigo = c0.replace(/\D/g,'');
+        if (!/^\d{7}$/.test(codigo)) return;
+        desc = c1.replace(/^\d{6,7}-\d+\s+/,'').trim();
+        stock = parseFloat(c2)||0; previs = parseFloat(c3)||0; dias = parseFloat(c4)||0;
+        cliente = 'Kania';
+      }
+
+      if (!cliente) return;
+      const familia = /crema|calabaza|calabacin/i.test(desc) ? 'CREMAS' : 'CALDOS';
+      cobRestoData.push({ cliente, familia, codigo, desc, stock:stock||0, prevision:previs||0, dias:parseFloat((dias||0).toFixed(1)) });
+    });
+
+    if(st) st.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) + ' · ' + cobRestoData.length + ' refs';
+    console.log('CobResto:', cobRestoData.length);
+    cobRestoData.forEach(d=>console.log(d.cliente,'|',d.desc,'|',d.dias+'d'));
+    renderCobResto();
+  } catch(err) {
+    if(st) st.textContent = '⚠️ Error: ' + err.message;
+    console.error('CobResto error:', err);
+  }
+}
+
+function setCobResto(cli, btn) {
+  cobRestoCliente = cli;
+  document.querySelectorAll('.cob-cli-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCobResto();
+}
+
+function renderCobResto() {
+  const data = cobRestoData.filter(d=>d.cliente===cobRestoCliente);
+  const tbody = document.getElementById('cobRestoTable');
+  const chartEl = document.getElementById('cobRestoChart');
+  if (!tbody||!chartEl) return;
+
+  function cc(d){return d<=0?'#9b1c1c':d<10?'#f74f4f':d<20?'#f7924f':'#4fc97f';}
+  function cl(d){return d<=0?'🚨 Sin stock':d<10?'⚠️ Crítico':d<20?'⚡ Atención':'✅ OK';}
+  function cb(d){return d<=0?'rgba(155,28,28,0.1)':d<10?'rgba(247,79,79,0.1)':d<20?'rgba(247,146,79,0.1)':'rgba(79,201,127,0.1)';}
+
+  if (data.length===0) {
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">Sin datos · '+cobRestoCliente+'</td></tr>';
+    if(cobRestoChartInst){cobRestoChartInst.destroy();cobRestoChartInst=null;}
+    return;
+  }
+
+  tbody.innerHTML='';
+  data.forEach(d=>{
+    const color=cc(d.dias),bg=cb(d.dias),label=cl(d.dias);
+    tbody.innerHTML+=`<tr style="background:${bg}">
+      <td style="color:var(--muted);font-size:0.75rem">${d.codigo}</td>
+      <td>${d.desc}</td>
+      <td style="text-align:right;color:var(--accent)">${d.stock.toLocaleString('es-ES')}</td>
+      <td style="text-align:right;color:var(--muted)">${d.prevision.toLocaleString('es-ES')}</td>
+      <td style="text-align:center"><span style="font-weight:700;color:${color}">${d.dias.toFixed(1)}d</span></td>
+      <td style="text-align:center"><span style="font-size:0.72rem;padding:0.15rem 0.5rem;border-radius:10px;background:${bg};color:${color};font-weight:600;border:1px solid ${color}40">${label}</span></td>
+    </tr>`;
+  });
+
+  if(cobRestoChartInst) cobRestoChartInst.destroy();
+  const colors=data.map(d=>cc(d.dias));
+  cobRestoChartInst=new Chart(chartEl,{
+    type:'bar',
+    data:{
+      labels:data.map(d=>d.desc.length>30?d.desc.substring(0,30)+'…':d.desc),
+      datasets:[{data:data.map(d=>d.dias),backgroundColor:colors.map(x=>x+'99'),borderColor:colors,borderWidth:2,borderRadius:6}]
+    },
+    options:{
+      indexAxis:'y',responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.raw.toFixed(1)} días`}}},
+      scales:{
+        x:{grid:{color:'#2a3147'},ticks:{color:'#7a849e'},title:{display:true,text:'Días de cobertura',color:'#7a849e'}},
+        y:{grid:{display:false},ticks:{color:'#c8d0e7',font:{size:11}}}
+      }
+    }
+  });
+}
+
 </script>
+
+
+<div id="cobrestoTab" style="display:none;padding:2rem;max-width:1400px;margin:0 auto">
+  <header style="margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+    <div>
+      <h1 style="font-family:'DM Serif Display',serif;font-size:2rem;background:linear-gradient(135deg,#e8ecf5,#4f8ef7);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Coberturas Clientes</h1>
+      <p style="color:var(--muted);font-size:0.85rem">Stock vs previsión · <span id="cobRestoStatus" style="color:var(--accent)">cargando…</span></p>
+    </div>
+    <button class="refresh-btn" onclick="loadCobResto()">↻ Actualizar</button>
+  </header>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;align-items:center">
+    <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;margin-right:0.3rem">Cliente:</span>
+    <button class="cob-cli-btn active" onclick="setCobResto('Auchan',this)">🛒 Auchan</button>
+    <button class="cob-cli-btn" onclick="setCobResto('Lidl',this)">🛒 Lidl</button>
+    <button class="cob-cli-btn" onclick="setCobResto('ECI',this)">🛒 ECI</button>
+    <button class="cob-cli-btn" onclick="setCobResto('ARO',this)">🛒 ARO</button>
+    <button class="cob-cli-btn" onclick="setCobResto('ITSU',this)">🛒 ITSU</button>
+    <button class="cob-cli-btn" onclick="setCobResto('Kania',this)">🛒 Kania</button>
+  </div>
+  <div class="chart-card full" style="margin-bottom:1.5rem">
+    <div class="card-title"><span style="background:var(--accent)"></span>Cobertura por Referencia (días)</div>
+    <canvas id="cobRestoChart" style="max-height:320px"></canvas>
+  </div>
+  <div class="table-card">
+    <div class="card-title" style="margin-bottom:0.8rem"><span style="background:var(--accent2)"></span>Detalle · Stock vs Previsión</div>
+    <table>
+      <thead><tr>
+        <th>Código</th><th>Descripción</th>
+        <th style="text-align:right">Stock</th>
+        <th style="text-align:right">Previsión</th>
+        <th style="text-align:center">Cobertura</th>
+        <th style="text-align:center">Estado</th>
+      </tr></thead>
+      <tbody id="cobRestoTable"></tbody>
+    </table>
+  </div>
+</div>
 
 </body>
 </html>
