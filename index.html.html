@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Ventas por Cliente — Live</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0d0f14;--surface:#161a23;--surface2:#1e2433;
+    --border:#2a3147;--accent:#4f8ef7;--accent2:#f7924f;
+    --accent3:#4ff7a8;--text:#e8ecf5;--muted:#7a849e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:"DM Sans",sans-serif;min-height:100vh;padding:2rem;}
+  header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border);}
+  h1{font-family:"DM Serif Display",serif;font-size:2.2rem;letter-spacing:-0.5px;line-height:1;background:linear-gradient(135deg,#e8ecf5 0%,#4f8ef7 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .subtitle{font-size:0.85rem;color:var(--muted);font-weight:300;margin-top:0.4rem;}
+  .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:0.5rem;}
+  .status-pill{display:flex;align-items:center;gap:0.5rem;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:0.35rem 0.9rem;font-size:0.78rem;color:var(--muted);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.live{background:var(--accent3);box-shadow:0 0 6px var(--accent3);animation:pulse 2s infinite;}
+  .dot.error{background:#f74f4f;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .refresh-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:0.35rem 0.8rem;font-size:0.78rem;cursor:pointer;font-family:"DM Sans",sans-serif;transition:all 0.2s;}
+  .refresh-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .filters-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.5rem;margin-bottom:1.5rem;display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start;}
+  .filter-group{display:flex;flex-direction:column;gap:0.5rem;}
+  .filter-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;}
+  .chips{display:flex;flex-wrap:wrap;gap:0.4rem;max-width:600px;}
+  .chip{padding:0.3rem 0.7rem;border-radius:20px;font-size:0.78rem;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all 0.15s;user-select:none;}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+  .chip:hover:not(.active){border-color:var(--accent);color:var(--accent);}
+  .filter-actions{display:flex;gap:0.4rem;margin-top:0.2rem;}
+  .filter-action-btn{font-size:0.72rem;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;font-family:"DM Sans",sans-serif;}
+  .filter-action-btn:hover{color:var(--accent);}
+  #loadingScreen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;z-index:100;}
+  .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .loading-text{color:var(--muted);font-size:0.9rem;}
+  #errorBox{display:none;background:#1a0f0f;border:1px solid #f74f4f44;border-radius:12px;padding:1.5rem 2rem;margin-bottom:1.5rem;color:#f77a7a;font-size:0.9rem;line-height:1.6;}
+  .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.4rem 1.6rem;position:relative;overflow:hidden;}
+  .kpi::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;}
+  .kpi:nth-child(1)::before{background:var(--accent);}
+  .kpi:nth-child(2)::before{background:var(--accent2);}
+  .kpi:nth-child(3)::before{background:var(--accent3);}
+  .kpi-label{font-size:0.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:500;}
+  .kpi-value{font-size:1.9rem;font-weight:600;margin-top:0.3rem;}
+  .kpi:nth-child(1) .kpi-value{color:var(--accent);}
+  .kpi:nth-child(2) .kpi-value{color:var(--accent2);}
+  .kpi:nth-child(3) .kpi-value{color:var(--accent3);}
+  .charts-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1rem;}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;}
+  .chart-card.full{grid-column:1/-1;}
+  .card-title{font-size:0.8rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600;margin-bottom:1.2rem;display:flex;align-items:center;gap:0.5rem;}
+  .card-title span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  canvas{max-height:300px;}
+  .table-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem;overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:0.85rem;}
+  th{text-align:left;color:var(--muted);font-weight:500;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.8px;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border);}
+  td{padding:0.65rem 0.8rem;border-bottom:1px solid rgba(42,49,71,0.5);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(79,142,247,0.04);}
+  .bar-bg{height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:3px;transition:width 0.6s ease;}
+  #dashboard{display:none;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  .kpi,.chart-card,.table-card,.filters-bar{animation:fadeUp 0.4s ease both;}
+  .tab-btn{font-family:"DM Sans",sans-serif;font-size:0.85rem;font-weight:600;background:none;border:none;color:var(--muted);padding:0.9rem 1.5rem;cursor:pointer;border-bottom:3px solid transparent;transition:all 0.2s;letter-spacing:0.02em;}
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+  #capacidadTab{display:none;padding:2rem;}
+  #ventasTab{display:block;}
+  .cap-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:box-shadow 0.2s,opacity 0.2s;}
+  .cap-panel.dragging{opacity:0.4;box-shadow:0 0 0 2px var(--accent);}
+  .cap-panel.drag-over{box-shadow:0 0 0 2px var(--accent2);}
+  .cap-panel.hidden{display:none;}
+  .drag-handle{padding:0.7rem 1rem;font-size:0.7rem;font-weight:600;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border);cursor:grab;display:flex;align-items:center;gap:0.5rem;user-select:none;letter-spacing:0.03em;text-transform:uppercase;}
+  .drag-handle:active{cursor:grabbing;}
+  .vis-btn{font-family:"DM Sans",sans-serif;font-size:0.75rem;font-weight:500;background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:0.3rem 0.7rem;border-radius:20px;cursor:pointer;transition:all 0.15s;}
+  .vis-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .vis-btn:not(.active){opacity:0.5;}
+  .vis-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .ven-panel{border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:1rem;background:var(--surface);transition:box-shadow 0.2s,opacity 0.2s;}
+  .ven-panel.dragging{opacity:0.4;box-shadow:0 0 0 2px var(--accent);}
+  .ven-panel.drag-over{box-shadow:0 0 0 2px var(--accent2);}
+  .ven-panel.hidden{display:none!important;}
+  .ano-btn{font-family:"DM Sans",sans-serif;font-size:0.78rem;font-weight:600;background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:0.3rem 0.8rem;border-radius:20px;cursor:pointer;transition:all 0.15s;}
+  .ano-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .ano-btn:not(.active){opacity:0.5;}
+  .cob-cli-btn{font-family:"DM Sans",sans-serif;font-size:0.78rem;font-weight:600;background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:0.35rem 1rem;border-radius:20px;cursor:pointer;transition:all 0.15s;}
+  .cob-cli-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .cob-cli-btn:hover:not(.active){border-color:var(--accent);color:var(--accent);}
+  /* INCIDENCIAS */
+  .inc-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;}
+  .inc-header{padding:0.7rem 1rem;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;}
+  .inc-header-title{font-size:0.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
+  .inc-filter-btn{font-family:"DM Sans",sans-serif;font-size:0.72rem;font-weight:600;background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:0.2rem 0.6rem;border-radius:20px;cursor:pointer;transition:all 0.15s;}
+  .inc-filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .inc-filter-btn:hover:not(.active){border-color:var(--accent);color:var(--accent);}
+  .inc-body{padding:0.6rem;overflow-y:auto;max-height:360px;display:flex;flex-direction:column;gap:0.4rem;}
+  .inc-row{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.75rem;font-size:0.78rem;}
+  .inc-row-top{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;flex-wrap:wrap;}
+  .inc-semana{font-size:0.68rem;font-weight:700;color:var(--accent);white-space:nowrap;}
+  .inc-dia{font-size:0.68rem;color:var(--muted);white-space:nowrap;}
+  .inc-linea{font-size:0.68rem;font-weight:600;color:var(--accent2);white-space:nowrap;}
+  .inc-horas{font-size:0.68rem;color:var(--muted);}
+  .inc-alerta{font-size:0.66rem;font-weight:700;padding:0.1rem 0.45rem;border-radius:10px;}
+  .inc-texto{color:var(--text);line-height:1.45;}
+  .inc-comentario{margin-top:0.2rem;font-size:0.74rem;color:var(--muted);font-style:italic;}
+  .inc-empty{font-size:0.78rem;color:var(--muted);text-align:center;padding:1.5rem;opacity:0.6;}
+  .inc-loading{font-size:0.78rem;color:var(--muted);text-align:center;padding:1rem;}
+</style>
+</head>
+<body>
+
+<div id="tabNav" style="background:var(--surface2);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;gap:0;position:sticky;top:0;z-index:100">
+  <button class="tab-btn active" id="tab-ventas" onclick="switchTab('ventas')">📊 Ventas</button>
+  <button class="tab-btn" id="tab-capacidad" onclick="switchTab('capacidad')">⚙️ Análisis Capacidad</button>
+  <button class="tab-btn" id="tab-mercadona" onclick="switchTab('mercadona')">🏪 Cobertura Mercadona</button>
+  <button class="tab-btn" id="tab-cobresto" onclick="switchTab('cobresto')">🏪 Cob. Clientes</button>
+  <button class="tab-btn" id="tab-mixtos" onclick="switchTab('mixtos')">🔀 Mixtos</button>
+  <button class="tab-btn" id="tab-planif" onclick="switchTab('planif')">📈 Planificación</button>
+</div>
+
+<div id="loadingScreen"><div class="spinner"></div><div class="loading-text">Cargando datos…</div></div>
+
+<!-- VENTAS TAB -->
+<div id="ventasTab" style="display:block">
+<div id="dashboard">
+  <header>
+    <div><h1>Ventas por Cliente</h1><p class="subtitle" id="subtitleText">Cargando…</p></div>
+    <div class="header-right">
+      <div class="status-pill"><div class="dot live" id="statusDot"></div><span id="statusText">Conectado</span></div>
+      <button class="refresh-btn" onclick="loadData();">↻ Actualizar datos</button>
+    </div>
+  </header>
+  <div id="errorBox"></div>
+  <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;margin-right:0.3rem">Mostrar:</span>
+    <button class="vis-btn active" data-panel="vpanel-kpis" onclick="togglePanel(this)">📊 KPIs</button>
+    <button class="vis-btn active" data-panel="vpanel-charts" onclick="togglePanel(this)">📈 Gráficos</button>
+    <button class="vis-btn active" data-panel="vpanel-tabla" onclick="togglePanel(this)">📋 Tabla</button>
+    <span style="margin-left:auto;font-size:0.72rem;color:var(--muted)">✦ Arrastra para reorganizar</span>
+  </div>
+  <div class="filters-bar">
+    <div class="filter-group">
+      <div class="filter-label">Semanas</div>
+      <div class="chips" id="chipsWeeks"></div>
+      <div class="filter-actions">
+        <button class="filter-action-btn" onclick="selectAll('weeks')">Seleccionar todo</button>
+        <button class="filter-action-btn" onclick="clearAll('weeks')">Limpiar</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Clientes</div>
+      <div class="chips" id="chipsClients"></div>
+      <div class="filter-actions">
+        <button class="filter-action-btn" onclick="selectAll('clients')">Seleccionar todo</button>
+        <button class="filter-action-btn" onclick="clearAll('clients')">Limpiar</button>
+      </div>
+    </div>
+  </div>
+  <div class="ven-panel" id="vpanel-kpis" draggable="true"><div class="drag-handle">⠿ KPIs</div><div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Ventas Totales</div><div class="kpi-value" id="kpi-total">—</div></div>
+    <div class="kpi"><div class="kpi-label">Cliente Top</div><div class="kpi-value" id="kpi-top">—</div></div>
+    <div class="kpi"><div class="kpi-label">Clientes seleccionados</div><div class="kpi-value" id="kpi-count">—</div></div>
+  </div></div>
+  <div class="ven-panel" id="vpanel-charts" draggable="true"><div class="drag-handle">⠿ Gráficos de Ventas</div><div class="charts-grid">
+    <div class="chart-card"><div class="card-title"><span></span>Ventas Totales por Cliente</div><canvas id="barChart"></canvas></div>
+    <div class="chart-card"><div class="card-title"><span style="background:var(--accent2)"></span>Cuota de Mercado (%)</div><canvas id="pieChart"></canvas></div>
+    <div class="chart-card full"><div class="card-title"><span style="background:var(--accent3)"></span>Evolución Semanal</div><canvas id="lineChart"></canvas></div>
+  </div></div>
+  <div class="ven-panel" id="vpanel-tabla" draggable="true"><div class="drag-handle">⠿ Detalle por Cliente</div><div class="table-card" style="border:none;border-radius:0;padding:0"><div class="card-title" style="margin-bottom:1rem;padding:1rem 1rem 0"><span></span>Detalle por Cliente</div>
+    <table><thead><tr><th>#</th><th>Cliente</th><th>Total Unidades</th><th>% del Total</th><th>Proporción</th></tr></thead><tbody id="tableBody"></tbody></table>
+  </div></div>
+</div>
+</div>
+
+<!-- CAPACIDAD TAB -->
+<div id="capacidadTab">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;align-self:center;margin-right:0.5rem">Mostrar:</span>
+      <button class="vis-btn active" data-panel="panel-kpis" onclick="togglePanel(this)">📊 KPIs</button>
+      <button class="vis-btn active" data-panel="panel-litros" onclick="togglePanel(this)">📈 Litros</button>
+      <button class="vis-btn active" data-panel="panel-stock" onclick="togglePanel(this)">📦 Stock</button>
+      <button class="vis-btn active" data-panel="panel-ocupacion" onclick="togglePanel(this)">🏭 Ocupación</button>
+      <button class="vis-btn active" data-panel="panel-oee" onclick="togglePanel(this)">📉 OEE</button>
+      <button class="vis-btn active" data-panel="panel-tabla" onclick="togglePanel(this)">📋 Tabla</button>
+    </div>
+    <span style="margin-left:auto;font-size:0.72rem;color:var(--muted)">✦ Arrastra los paneles para reorganizarlos</span>
+  </div>
+  <div id="capacidadGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="cap-panel" id="panel-kpis" style="grid-column:1/-1" draggable="true">
+      <div class="drag-handle">⠿ KPIs Capacidad</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;padding:1rem">
+        <div class="kpi" style="animation:none"><div class="kpi-label">Cap. Neta L1</div><div class="kpi-value" style="color:var(--accent)">1.630.000</div><div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">Litros / semana</div></div>
+        <div class="kpi" style="animation:none"><div class="kpi-label">Cap. Neta L2</div><div class="kpi-value" style="color:var(--accent2)">1.505.000</div><div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">Litros / semana</div></div>
+        <div class="kpi" style="animation:none"><div class="kpi-label">Cap. Neta L3</div><div class="kpi-value" style="color:var(--accent3)">345.998</div><div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">Litros / semana</div></div>
+        <div class="kpi" style="animation:none"><div class="kpi-label">Stock Mercadona S16</div><div class="kpi-value" style="color:#f74fb4">3.200</div><div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">+6.7% vs S15</div></div>
+      </div>
+    </div>
+    <div class="cap-panel" id="panel-litros" draggable="true">
+      <div class="drag-handle" style="display:flex;align-items:center;justify-content:space-between">
+        <span>⠿ Evolución Litros Semanales</span>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          <span style="font-size:0.7rem;color:var(--muted);font-weight:600">AÑO:</span>
+          <button class="ano-btn active" id="btn-2025" onclick="toggleAno(2025,this)">2025</button>
+          <button class="ano-btn active" id="btn-2026" onclick="toggleAno(2026,this)">2026</button>
+        </div>
+      </div>
+      <div style="padding:1rem"><canvas id="litrosChart" style="max-height:280px"></canvas></div>
+    </div>
+    <div class="inc-panel" id="panel-observaciones">
+      <div class="inc-header">
+        <span class="inc-header-title">🚨 Incidencias · Google Sheets</span>
+        <div style="display:flex;gap:0.35rem;align-items:center;flex-wrap:wrap">
+          <select id="incSemanaSelect" onchange="incRenderizar()" style="font-family:'DM Sans',sans-serif;font-size:0.72rem;font-weight:600;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:0.2rem 0.55rem;border-radius:20px;cursor:pointer;outline:none;">
+            <option value="">Todas las semanas</option>
+          </select>
+          <button class="inc-filter-btn active" data-alerta="TODOS" onclick="incFiltrar(this)">Todos</button>
+          <button class="inc-filter-btn" data-alerta="CRÍTICO" onclick="incFiltrar(this)" style="border-color:#f74f4f44">🔴 Crítico</button>
+          <button class="inc-filter-btn" data-alerta="ALTO" onclick="incFiltrar(this)" style="border-color:#f7924f44">🟠 Alto</button>
+          <button class="inc-filter-btn" data-alerta="Normal" onclick="incFiltrar(this)" style="border-color:#4ff7a844">🟢 Normal</button>
+          <button onclick="incCargar()" style="font-family:'DM Sans',sans-serif;font-size:0.7rem;background:none;border:none;color:var(--muted);cursor:pointer;padding:0.1rem 0.3rem;" title="Recargar">↻</button>
+        </div>
+      </div>
+      <div class="inc-body" id="incBody">
+        <div class="inc-loading">Cargando incidencias…</div>
+      </div>
+    </div>
+    <div class="cap-panel" id="panel-stock" draggable="true">
+      <div class="drag-handle">⠿ Stocks Mercadona (uds)</div>
+      <div style="padding:1rem"><canvas id="stockChart" style="max-height:280px"></canvas></div>
+    </div>
+    <div class="cap-panel" id="panel-ocupacion" draggable="true">
+      <div class="drag-handle">⠿ Evolución Ocupación</div>
+      <div style="padding:1rem"><canvas id="ocupacionChart" style="max-height:260px"></canvas></div>
+    </div>
+    <div class="cap-panel" id="panel-oee" style="grid-column:1/-1" draggable="true">
+      <div class="drag-handle">⠿ Evolución OEE por Línea</div>
+      <div style="padding:1rem"><canvas id="oeeChart" style="max-height:280px"></canvas></div>
+    </div>
+    <div class="cap-panel" id="panel-tabla" style="grid-column:1/-1" draggable="true">
+      <div class="drag-handle">⠿ Tabla Producción Semanal (Litros)</div>
+      <div style="padding:1rem;overflow-x:auto">
+        <table><thead><tr>
+          <th>Semana</th>
+          <th style="text-align:right;color:var(--accent)">Línea 1</th>
+          <th style="text-align:right;color:var(--accent2)">Línea 2</th>
+          <th style="text-align:right;color:var(--muted)">L1+L2</th>
+          <th style="text-align:right;color:var(--accent3)">Línea 3</th>
+          <th style="text-align:right;color:#f74fb4">Total</th>
+        </tr></thead><tbody id="litrosTable"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MERCADONA TAB -->
+<div id="mercadonaTab" style="display:none;padding:2rem;max-width:1400px;margin:0 auto">
+  <header style="margin-bottom:1.5rem">
+    <h1 style="font-family:'DM Serif Display',serif;font-size:2rem;background:linear-gradient(135deg,#e8ecf5,#4f8ef7);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Cobertura Mercadona</h1>
+    <p style="color:var(--muted);font-size:0.85rem">Stock vs previsión HDO · datos Excel · Actualizado 28/04/2026 · Stock hasta 22/04 · Previs hasta 07/05</p>
+  </header>
+  <div class="ven-panel" style="margin-top:0">
+    <div style="padding:0.5rem">
+      <div class="chart-card full" style="margin-bottom:1rem">
+        <div class="card-title"><span style="background:var(--accent2)"></span>Cobertura HDO por Referencia (días)</div>
+        <div style="margin-bottom:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap" id="cobFamilyFilter"></div>
+        <canvas id="cobChart" style="max-height:340px"></canvas>
+      </div>
+      <div class="table-card">
+        <div class="card-title" style="margin-bottom:1rem"><span style="background:var(--accent3)"></span>Detalle Cobertura HDO · Stock vs Previsión</div>
+        <table><thead><tr>
+          <th>Familia</th><th>Formato</th><th>Descripción</th>
+          <th>Stock hasta 22/04 (uds)</th><th>Previs hasta 07/05 (uds)</th>
+          <th>Cobertura (días)</th><th>Estado</th>
+        </tr></thead><tbody id="cobTableBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COB CLIENTES TAB -->
+<div id="cobrestoTab" style="display:none;padding:2rem;max-width:1400px;margin:0 auto">
+  <header style="margin-bottom:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+    <div>
+      <h1 style="font-family:'DM Serif Display',serif;font-size:2rem;background:linear-gradient(135deg,#e8ecf5,#4f8ef7);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Coberturas Clientes</h1>
+      <p style="color:var(--muted);font-size:0.85rem">Stock vs previsión · <span id="cobRestoStatus" style="color:var(--accent)"></span></p>
+    </div>
+  </header>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem;align-items:center">
+    <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;margin-right:0.3rem">Cliente:</span>
+    <div class="cob-cli-btns" style="display:flex;gap:0.5rem;flex-wrap:wrap"></div>
+  </div>
+  <div class="chart-card full" style="margin-bottom:1.5rem">
+    <div class="card-title"><span style="background:var(--accent)"></span>Cobertura por Referencia (días)</div>
+    <canvas id="cobRestoChart" style="max-height:320px"></canvas>
+  </div>
+  <div class="table-card">
+    <div class="card-title" style="margin-bottom:0.8rem"><span style="background:var(--accent2)"></span>Detalle · Stock vs Previsión</div>
+    <table><thead><tr>
+      <th>Código</th><th>Descripción</th>
+      <th style="text-align:right">Stock</th><th style="text-align:right">Previsión</th>
+      <th style="text-align:center">Cobertura</th><th style="text-align:center">Estado</th>
+    </tr></thead><tbody id="cobRestoTable"></tbody></table>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+const SEMANAS = ["Semana 1","Semana 2","Semana 3","Semana 4","Semana 5","Semana 6","Semana 7","Semana 8","Semana 9","Semana 10","Semana 11","Semana 12","Semana 13","Semana 14","Semana 15","Semana 16"];
+const MARCA_TOTALS = {"ALTEZA":[5760,864,12240,2592,19584,4872,4104,3720,0,12648,11388,6468,5232,3264,3192,3516],"ARO":[2256,2508,5040,0,3336,960,14772,1044,9408,16104,26700,11028,6720,7452,9528,11136],"ASDA":[0,726,363,363,726,363,1089,726,0,1089,1452,1089,726,1801,0,0],"ASIA GREEN GARDEN":[0,0,0,0,70332,37440,4320,0,0,0,0,0,0,0,12024,0],"AUCHAN":[74376,92832,72276,69612,57972,50472,8568,117960,91512,85080,66972,63528,36096,37116,80136,30396],"BISTO":[0,0,5760,0,0,0,0,42000,0,0,75490,0,0,0,21840,0],"BRAMWELLS":[16064,23622,23310,26136,18584,20790,21420,16062,16695,19130,15434,19761,11970,16046,14175,3645],"COOP":[0,0,0,0,19888,0,0,0,0,0,0,0,0,0,0,0],"CORTE INGLES":[4320,4656,2592,2592,1416,0,0,8640,6912,5184,3072,6048,10368,0,6048,9504],"DOLLAR TREE":[0,0,0,0,113400,0,0,0,0,0,0,0,0,0,0,0],"HACENDADO":[1305384,1676964,1631472,1533516,1463280,1704160,1249134,1451088,1469292,1248516,1519788,1207944,1333176,1296996,1068468,1108212],"ITSU":[21600,60744,21600,39312,249426,39312,21600,78624,139260,117936,29448,21318,121824,117972,117912,0],"KALLO":[0,0,0,0,29880,0,26388,0,0,68256,0,0,38136,157248,36096,35772],"KANIA":[15708,11424,94344,42840,0,91392,42840,31416,47124,44268,49980,25884,39984,8568,29988,88536],"LA COCINA":[714,714,0,1785,2142,595,2261,0,3213,1428,714,714,1428,714,357,1428],"LES PRINTANIERES":[0,33365,1078,3556,48086,2758,1988,23175,8955,64227,0,7881,11967,4845,0,0],"LOBLAW":[0,0,0,71400,0,0,35700,0,35700,0,0,0,0,0,0,0],"MAGGI":[0,0,0,275100,0,0,0,11232,70970,0,23508,0,0,46716,0,0],"NEWGATE":[1836,1404,1836,3348,1728,0,2268,2700,1512,1350,1566,1188,1350,1404,1512,270],"No asignado":[0,0,0,864,0,0,0,0,0,0,0,0,0,0,0,0],"OXO":[0,43680,61680,87360,0,85690,207800,30480,0,65520,225670,56370,0,43680,0,0]};
+
+const HDO_DATA = [{"familia":"CREMA","formato":"CAJA","descripcion":"CALABAZA","codigo":"1100060","stock":313368,"previs":144100.0,"cobertura":37.0},{"familia":"CREMA","formato":"CAJA","descripcion":"CALABACÍN","codigo":"1100222","stock":226764,"previs":57200.0,"cobertura":67.4},{"familia":"CREMA","formato":"CAJA","descripcion":"POLLO-VERDURAS","codigo":"1100177","stock":267960,"previs":132000.0,"cobertura":34.5},{"familia":"CREMA","formato":"CAJA","descripcion":"VERDURAS","codigo":"1100176","stock":198960,"previs":118800.0,"cobertura":28.5},{"familia":"CALDOS","formato":"BANDEJA","descripcion":"PESCADO","codigo":"1100201","stock":277000,"previs":248600.0,"cobertura":18.9},{"familia":"CALDOS","formato":"BANDEJA","descripcion":"PAELLA MARISCO","codigo":"1100194","stock":201000,"previs":217800.0,"cobertura":15.7},{"familia":"CALDOS","formato":"BANDEJA","descripcion":"COCIDO","codigo":"1100200","stock":228000,"previs":159500.0,"cobertura":16.3},{"familia":"CALDOS","formato":"BANDEJA","descripcion":"VERDURA","codigo":"1100202","stock":128000,"previs":117700.0,"cobertura":18.5},{"familia":"CALDOS","formato":"BANDEJA","descripcion":"POLLO","codigo":"1100192","stock":307000,"previs":1049400.0,"cobertura":5.0},{"familia":"CALDOS","formato":"CAJA","descripcion":"SALSA POLLO LISTO COMER HALAL","codigo":"1100253","stock":8208,"previs":864.0,"cobertura":35.0},{"familia":"CALDOS","formato":"CAJA","descripcion":"COCIDO","codigo":"1100171","stock":101592,"previs":77000.0,"cobertura":8.5},{"familia":"CALDOS","formato":"CAJA","descripcion":"PAELLA MARISCO","codigo":"1100027","stock":71712,"previs":95700.0,"cobertura":12.7},{"familia":"CALDOS","formato":"CAJA","descripcion":"VERDURA","codigo":"1100010","stock":20358,"previs":115500.0,"cobertura":3.0},{"familia":"CALDOS","formato":"CAJA","descripcion":"POLLO","codigo":"1100193","stock":13338,"previs":20900.0,"cobertura":10.8},{"familia":"CALDOS","formato":"CAJA","descripcion":"PESCADO","codigo":"1100172","stock":21600,"previs":57200.0,"cobertura":6.4},{"familia":"CALDOS","formato":"CAJA","descripcion":"SALSA POLLO LISTO COMER","codigo":"1100178","stock":75852,"previs":129800.0,"cobertura":9.9},{"familia":"CALDOS","formato":"CAJA","descripcion":"ESCUDELLA","codigo":"1100191","stock":3402,"previs":30800.0,"cobertura":1.9},{"familia":"CALDOS","formato":"CAJA","descripcion":"SOFRITO","codigo":"1100209","stock":113000,"previs":97900.0,"cobertura":19.6},{"familia":"CALDOS","formato":"CAJA","descripcion":"BCS","codigo":"1100221","stock":61000,"previs":63800.0,"cobertura":16.3}];
+
+const COB_CLIENTES_DATA = [
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100156","desc":"CALDO DE COCIDO BRIK 1 L AUCHAN ES.","stock":33312,"prevision":22000,"dias":45.4},
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100157","desc":"CALDO DE VERDURA BRIK 1 L AUCHAN ES.","stock":38304,"prevision":16000,"dias":71.8},
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100158","desc":"CALDO DE PESCADO BRIK 1 L AUCHAN ES.","stock":56160,"prevision":15000,"dias":112.3},
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100159","desc":"CALDO DE POLLO BRIK 1 L AUCHAN ES.","stock":8268,"prevision":65000,"dias":3.8},
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100160","desc":"CALDO POLLO BAJO EN SAL BRIK 1 L AUCHAN ES.","stock":6048,"prevision":20000,"dias":9.1},
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100161","desc":"CALDO DE CARNE BRIK 1 L AUCHAN ES.","stock":15456,"prevision":23000,"dias":20.2},
+  {"cliente":"Auchan","familia":"CALDOS","codigo":"1100163","desc":"CALDO PAELLA MARISCO BRIK 1 L AUCHAN ES.","stock":26148,"prevision":10000,"dias":78.4},
+  {"cliente":"Auchan","familia":"CREMAS","codigo":"1100153","desc":"CREMA DE CALABACIN BRIK 500 ml AUCHAN ESP.","stock":36504,"prevision":15000,"dias":73.0},
+  {"cliente":"Auchan","familia":"CREMAS","codigo":"1100154","desc":"CREMA POLLO C/VERD. BRIK 500 ml AUCHAN ESP.","stock":15528,"prevision":15000,"dias":31.1},
+  {"cliente":"Auchan","familia":"CREMAS","codigo":"1100164","desc":"CREMA DE CALABAZA BRIK 500 ml AUCHAN ESP.","stock":17064,"prevision":15000,"dias":34.1},
+  {"cliente":"Auchan","familia":"CREMAS","codigo":"1100165","desc":"CREMA VERDURAS BRIK 500 ml AUCHAN ESP.","stock":8868,"prevision":15000,"dias":17.7},
+  {"cliente":"Kania","familia":"CREMAS","codigo":"1100174","desc":"CREMA DE VERDURAS BRIK 500 ml KANIA","stock":88392,"prevision":60000,"dias":44.2},
+  {"cliente":"Kania","familia":"CREMAS","codigo":"1100175","desc":"CREMA DE CALABAZA BRIK 500 ml KANIA","stock":119736,"prevision":75000,"dias":47.9},
+  {"cliente":"ITSU","familia":"CALDOS","codigo":"1100056","desc":"F4007 BRILLANT BROTH CHICKEN 500 ML","stock":244716,"prevision":157000,"dias":46.8},
+  {"cliente":"ITSU","familia":"CALDOS","codigo":"1100057","desc":"F4010 BRILLANT BROTH CLASSIC 500 ML","stock":114240,"prevision":118000,"dias":29.0},
+  {"cliente":"ITSU","familia":"CALDOS","codigo":"1100148","desc":"F4011 BRILLANT BROTH MISO RAMEN 500 ML","stock":26424,"prevision":39312,"dias":20.2},
+  {"cliente":"ITSU","familia":"CALDOS","codigo":"1100181","desc":"F4100 CHICKEN BROTH EAT BEAUTIFUL 1L","stock":15504,"prevision":43200,"dias":10.8},
+  {"cliente":"ITSU","familia":"CALDOS","codigo":"1100183","desc":"F4101 BEEF PHO BROTH EAT BEAUTIFUL 1L","stock":16128,"prevision":43200,"dias":11.2},
+  {"cliente":"ITSU","familia":"CALDOS","codigo":"1100204","desc":"R4007 BRILLANT BROTH CHICKEN 500 ML EU","stock":105708,"prevision":118000,"dias":26.9},
+  {"cliente":"ECI","familia":"CALDOS","codigo":"1100206","desc":"CALDO DE POLLO BRIK 1L ECI","stock":13752,"prevision":13142,"dias":62.8},
+  {"cliente":"ECI","familia":"CALDOS","codigo":"1100207","desc":"CALDO DE VERDURAS BRIK 1L ECI","stock":3648,"prevision":8000,"dias":27.4},
+  {"cliente":"ECI","familia":"CALDOS","codigo":"1100208","desc":"CALDO DE COCIDO BRIK 1L ECI","stock":7872,"prevision":8604,"dias":54.9},
+  {"cliente":"ECI","familia":"CALDOS","codigo":"1100132","desc":"CHICKEN STOCK BRIK 1 L ARO","stock":3924,"prevision":17542,"dias":6.7},
+  {"cliente":"ECI","familia":"CALDOS","codigo":"1100134","desc":"FISH STOCK BRIK 1 L ARO","stock":26652,"prevision":8561,"dias":93.4},
+  {"cliente":"ECI","familia":"CALDOS","codigo":"1100136","desc":"VEGETABLE STOCK BRIK 1 L ARO","stock":0,"prevision":6550,"dias":0.0},
+  {"cliente":"Lidl","familia":"CALDOS","codigo":"1300096","desc":"NEWGATE LIDL","stock":0,"prevision":1500,"dias":0.0},
+  {"cliente":"Lidl","familia":"CALDOS","codigo":"1300097","desc":"BRAMWELLS LIDL","stock":270,"prevision":1500,"dias":0.18}
+]
